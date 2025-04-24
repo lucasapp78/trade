@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sinais Forex - Entrada CALL ou PUT</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    h1 {
+      margin: 20px 0;
+      font-size: 24px;
+      color: #333;
+    }
+    #pairSelect {
+      padding: 8px 16px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      margin-top: 20px;
+      background-color: #fff;
+    }
+    .sinal {
+      font-size: 20px;
+      font-weight: bold;
+      margin: 15px 0;
+      color: #333;
+    }
+    .sinal span {
+      font-weight: bold;
+    }
+    #sinal_box {
+      margin-top: 30px;
+      padding: 25px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .alerta {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ff4500;
+    }
+    #estatisticas {
+      margin-top: 30px;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      display: inline-block;
+      width: 100%;
+      max-width: 500px;
+    }
+    .btn {
+      padding: 10px 20px;
+      margin: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: background-color 0.3s ease;
+    }
+    .green {
+      background-color: #28a745;
+      color: white;
+    }
+    .green:hover {
+      background-color: #218838;
+    }
+    .red {
+      background-color: #dc3545;
+      color: white;
+    }
+    .red:hover {
+      background-color: #c82333;
+    }
+    .tradingview-widget-container {
+      margin-top: 20px;
+      max-width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Responsividade */
+    @media (max-width: 768px) {
+      #pairSelect {
+        width: 80%;
+      }
+      #sinal_box, #estatisticas {
+        width: 90%;
+        padding: 15px;
+      }
+      .btn {
+        width: 100%;
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 Sinais de Entrada - Pullback com Rejeição</h1>
+
+  <label for="pairSelect">Selecione o Par de Moedas:</label>
+  <select id="pairSelect">
+    <option value="EUR/USD">EUR/USD</option>
+    <option value="GBP/USD">GBP/USD</option>
+    <option value="USD/JPY">USD/JPY</option>
+  </select>
+
+  <div id="tradingview_chart" style="height: 400px; margin-top: 20px;"></div>
+
+  <div id="sinal_box">
+    <div id="sinal_m1" class="sinal">⏳ Analisando M1...</div>
+    <div id="sinal_m5" class="sinal">⏳ Analisando M5...</div>
+  </div>
+
+  <div id="estatisticas">
+    <h3>📊 Estatísticas</h3>
+    <p>Sinais: <span id="totalSinais">0</span></p>
+    <p>✅ GREEN: <span id="greenCount">0</span> | ❌ RED: <span id="redCount">0</span></p>
+    <p>🎯 Acerto: <span id="acerto">0%</span></p>
+  </div>
+
+  <script src="https://s3.tradingview.com/tv.js"></script>
+  <script>
+    const API_KEY = "e40e3e9537e64004b53f65b4f8b73901";
+    let currentPair = "EUR/USD";
+
+    let totalSinais = 0;
+    let greenCount = 0;
+    let redCount = 0;
+
+    function atualizarEstatisticas() {
+      document.getElementById("totalSinais").textContent = totalSinais;
+      document.getElementById("greenCount").textContent = greenCount;
+      document.getElementById("redCount").textContent = redCount;
+      const acerto = totalSinais > 0 ? ((greenCount / totalSinais) * 100).toFixed(1) : 0;
+      document.getElementById("acerto").textContent = acerto + "%";
+    }
+
+    function tocarAlerta() {
+      const audio = new Audio('https://www.soundjay.com/button/beep-07.wav');
+      audio.play();
+    }
+
+    function formatSymbolForTV(pair) {
+      return "OANDA:" + pair.replace("/", "");
+    }
+
+    function carregarGraficoTV(pair) {
+      const symbol = formatSymbolForTV(pair);
+      document.getElementById("tradingview_chart").innerHTML = "";
+      new TradingView.widget({
+        "width": "100%",
+        "height": 400,
+        "symbol": symbol,
+        "interval": "1",
+        "timezone": "Etc/UTC",
+        "theme": "light",
+        "style": "1",
+        "locale": "br",
+        "container_id": "tradingview_chart"
+      });
+    }
+
+    async function buscarCandle(intervalo) {
+      const url = `https://api.twelvedata.com/time_series?symbol=${currentPair}&interval=${intervalo}&outputsize=2&apikey=${API_KEY}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === "error") return { error: data.message };
+        const vela = data.values[0];
+        return {
+          datetime: vela.datetime,
+          o: parseFloat(vela.open),
+          h: parseFloat(vela.high),
+          l: parseFloat(vela.low),
+          c: parseFloat(vela.close)
+        };
+      } catch {
+        return { error: "Erro ao conectar com a API." };
+      }
+    }
+
+    function analisarDirecao(vela) {
+      const corpo = Math.abs(vela.o - vela.c);
+      const pavioSuperior = vela.h - Math.max(vela.o, vela.c);
+      const pavioInferior = Math.min(vela.o, vela.c) - vela.l;
+
+      const rejeicao = corpo < 0.0003 &&
+        (pavioSuperior > corpo * 1.5 || pavioInferior > corpo * 1.5);
+
+      if (!rejeicao) return null;
+
+      if (pavioInferior > pavioSuperior) return "CALL";
+      if (pavioSuperior > pavioInferior) return "PUT";
+
+      return null;
+    }
+
+    function getLocalTime() {
+      const localDate = new Date();
+      const h = String(localDate.getHours()).padStart(2, '0');
+      const m = String(localDate.getMinutes()).padStart(2, '0');
+      return `${h}:${m} (Horário Local)`;
+    }
+
+    function proximaHora() {
+      const localDate = new Date();
+      localDate.setMinutes(localDate.getMinutes() + 1);
+      const h = String(localDate.getHours()).padStart(2, '0');
+      const m = String(localDate.getMinutes()).padStart(2, '0');
+      return `${h}:${m} (Horário Local)`;
+    }
+
+    function criarBotoesFeedback(el) {
+      const container = document.createElement("div");
+
+      const btnGreen = document.createElement("button");
+      btnGreen.className = "btn green";
+      btnGreen.textContent = "✅ GREEN";
+      btnGreen.onclick = () => {
+        greenCount++;
+        totalSinais++;
+        atualizarEstatisticas();
+        container.remove();
+      };
+
+      const btnRed = document.createElement("button");
+      btnRed.className = "btn red";
+      btnRed.textContent = "❌ RED";
+      btnRed.onclick = () => {
+        redCount++;
+        totalSinais++;
+        atualizarEstatisticas();
+        container.remove();
+      };
+
+      container.appendChild(btnGreen);
+      container.appendChild(btnRed);
+      el.appendChild(container);
+    }
+
+    async function analisar(intervalo, elementoId) {
+      const vela = await buscarCandle(intervalo);
+      const el = document.getElementById(elementoId);
+
+      if (vela.error) {
+        el.textContent = `Erro (${intervalo.toUpperCase()}): ${vela.error}`;
+        el.style.color = "red";
+        return;
+      }
+
+      const direcao = analisarDirecao(vela);
+      if (direcao) {
+        const horaAnalise = getLocalTime();
+        const horaEntrada = proximaHora();
+        el.innerHTML = `
+          🚨 <span class="alerta">ENTRADA SUGERIDA (${intervalo.toUpperCase()}): ${direcao}</span><br>
+          🕐 Vela analisada: ${horaAnalise}<br>
+          🎯 Entrada recomendada na <b>próxima vela</b>, às: <span style="color:blue;">${horaEntrada}</span>
+        `;
+        el.style.color = direcao === "CALL" ? "green" : "red";
+        tocarAlerta();
+        criarBotoesFeedback(el);
+      } else {
+        el.textContent = `Sem sinal no momento (${intervalo.toUpperCase()})`;
+        el.style.color = "gray";
+      }
+    }
+
+    function rodarAnalise() {
+      analisar("1min", "sinal_m1");
+      analisar("5min", "sinal_m5");
+    }
+
+    document.getElementById("pairSelect").addEventListener("change", (e) => {
+      currentPair = e.target.value;
+      carregarGraficoTV(currentPair);
+      rodarAnalise();
+    });
+
+    carregarGraficoTV(currentPair);
+    rodarAnalise();
+    setInterval(rodarAnalise, 60000);
+    atualizarEstatisticas();
+  </script>
+</body>
+</html>
